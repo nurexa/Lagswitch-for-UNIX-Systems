@@ -33,20 +33,38 @@ def _keyboards():
                 yield f"/dev/input/{ev}"
 
 
-def listen(binds, tick=None, interval=0.2):
-    """Block forever; call binds[code]() on each press of a bound key.
-    If given, tick() runs every `interval` seconds (and after each event)."""
-    files = [open(p, "rb", buffering=0) for p in _keyboards()]
-    if not files:
-        raise RuntimeError("no keyboard found in /dev/input (are you root?)")
-    while True:
-        ready, _, _ = select.select(files, [], [], interval if tick else None)
-        for f in ready:
-            data = os.read(f.fileno(), EVENT.size)
-            if len(data) < EVENT.size:
-                continue
-            _, _, etype, code, value = EVENT.unpack(data)
-            if etype == EV_KEY and value == PRESS and code in binds:
-                binds[code]()
-        if tick:
-            tick()
+KEYNAMES = {code: name for name, code in KEYS.items()}
+
+
+def keyname(code):
+    return KEYNAMES.get(code, str(code))
+
+
+class Hotkeys:
+    """Key code -> action table, plus a one-shot `capture` slot for rebinding."""
+
+    def __init__(self):
+        self.actions = {}
+        self.capture = None  # set to fn(code) to grab the next key press
+
+    def listen(self, tick=None, interval=0.2):
+        """Block forever. If given, tick() runs every `interval` seconds."""
+        files = [open(p, "rb", buffering=0) for p in _keyboards()]
+        if not files:
+            raise RuntimeError("no keyboard found in /dev/input (are you root?)")
+        while True:
+            ready, _, _ = select.select(files, [], [], interval if tick else None)
+            for f in ready:
+                data = os.read(f.fileno(), EVENT.size)
+                if len(data) < EVENT.size:
+                    continue
+                _, _, etype, code, value = EVENT.unpack(data)
+                if etype != EV_KEY or value != PRESS:
+                    continue
+                if self.capture:
+                    grab, self.capture = self.capture, None
+                    grab(code)
+                elif code in self.actions:
+                    self.actions[code]()
+            if tick:
+                tick()

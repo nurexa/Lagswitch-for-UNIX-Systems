@@ -17,26 +17,33 @@ cd Lagswitch-for-UNIX-Systems
 ## Use
 
 ```sh
-sudo lagswitch run                          # F8 toggles cut-off, whole machine
-sudo lagswitch run -k f9 -d out             # F9, outgoing only
-sudo lagswitch run -n firefox               # only that process (by name)
-sudo lagswitch run -p 1234 -k scrolllock    # only that PID
-sudo lagswitch run --ping-key f10 --ping 300   # F10 toggles +300ms latency
-sudo lagswitch run --ui --ping-key f10      # live status panel (c / l / q also work in the window)
-sudo lagswitch run --no-beep                # silence the on/off sounds
-sudo lagswitch info [-p PID]                # diagnostics
-sudo lagswitch reset                        # clean up after a crash
+sudo lagswitch
 ```
 
-Ctrl-C stops it and removes every rule, qdisc and cgroup it created.
+That's it: a live panel opens, **F8** cuts/restores the connection, **F9** toggles +200ms latency.
+
+**Change a key from the panel:** press `1` (cut) or `2` (latency), then press the key you want on
+your keyboard. It is detected automatically, checked for conflicts, and remembered next time
+(`~/.config/lagswitch.json`). `Esc` cancels. `c` / `l` toggle from the window, `q` quits.
+
+```sh
+sudo lagswitch -n firefox -d out    # only that process (by name), outgoing only
+sudo lagswitch -p 1234              # only that PID
+sudo lagswitch --ping 300           # +300ms instead of +200ms
+sudo lagswitch --plain --no-beep    # log lines only, no sounds
+sudo lagswitch info [-p PID]        # diagnostics
+sudo lagswitch reset                # clean up after a crash
+```
+
+Ctrl-C / `q` stops it and removes every rule, qdisc and cgroup it created.
 
 | Flag | Meaning |
 |---|---|
-| `-k, --key` | cut-off hotkey: `f1`-`f12`, `a`-`z`, `0`-`9`, `space`, `pause`, `scrolllock`, … or a raw evdev code (find with `evtest`) |
+| `-k, --key` | cut-off key: `f1`-`f12`, `a`-`z`, `0`-`9`, `space`, `pause`, `scrolllock`, … or a raw evdev code (default `f8`, or last saved) |
+| `--ping-key`, `--ping` | latency key (default `f9`) and milliseconds (default 200) |
 | `-d, --direction` | `in`, `out`, `both` (default) |
 | `-p / -n` | restrict to a PID / exact process name |
-| `--ping-key`, `--ping` | latency hotkey and milliseconds (default 200) |
-| `--ui` | terminal status panel: connection state, scope, latency, dropped packets, event log |
+| `--plain` | no status panel, just log lines |
 | `--no-beep` | disable sounds |
 
 ## Sounds
@@ -66,6 +73,7 @@ lagswitch/
   netem.py      tc netem latency
   beep.py       on/off tones
   ui.py         curses status panel
+  config.py     remembers your keys
   info.py       diagnostics
 ```
 
