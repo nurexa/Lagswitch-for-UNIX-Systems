@@ -4,7 +4,7 @@ import struct
 import tempfile
 import wave
 
-from lagswitch import beep, firewall, keys
+from lagswitch import beep, firewall, info, keys
 
 assert keys.keycode("F8") == 66 and keys.keycode("q") == 16 and keys.keycode("30") == 30
 try:
@@ -42,4 +42,7 @@ with tempfile.TemporaryDirectory() as d:
         pass
     assert seen == [66, 66] and grabbed == [30], (seen, grabbed)
 assert keys.keyname(66) == "f8" and keys.keyname(999) == "999"
+sample = ('tcp ESTAB 0 0 10.0.0.2:5000 1.1.1.1:443 users:(("firefox",pid=1234,fd=50),("firefox",pid=1234,fd=51))\n'
+          'udp UNCONN 0 0 *:68 *:* users:(("dhcpcd",pid=77,fd=5))\n')
+assert info.parse_ss(sample) == [(1234, "firefox", 2), (77, "dhcpcd", 1)]
 print("ok")

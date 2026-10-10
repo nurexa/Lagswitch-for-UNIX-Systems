@@ -1,4 +1,6 @@
 """Network facts a debugger usually wants, in one place."""
+import os
+import re
 import subprocess
 
 from . import firewall, netem
@@ -7,6 +9,22 @@ from . import firewall, netem
 def _run(*cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
     return (r.stdout + r.stderr).strip() or "(none)"
+
+
+def parse_ss(text):
+    """ss -tunap output -> [(pid, name, socket_count)], busiest first."""
+    found = {}
+    for line in text.splitlines():
+        for name, pid in re.findall(r'\("([^"]+)",pid=(\d+)', line):
+            n = found.setdefault(int(pid), [name, 0])
+            n[1] += 1
+    return sorted(((p, n, c) for p, (n, c) in found.items()), key=lambda r: -r[2])
+
+
+def processes():
+    """Processes that currently own network sockets (excluding ourselves)."""
+    out = subprocess.run(["ss", "-tunapH"], capture_output=True, text=True).stdout
+    return [r for r in parse_ss(out) if r[0] != os.getpid()]
 
 
 def show(pid=None):

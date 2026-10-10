@@ -14,6 +14,17 @@ def _pid_of(name):
     return int(r.stdout)
 
 
+DIRECTIONS = {"both": "cutting sending + receiving", "out": "cutting sending only (outgoing)",
+              "in": "cutting receiving only (incoming)"}
+
+
+def pid_name(pid):
+    try:
+        return open(f"/proc/{pid}/comm").read().strip()
+    except OSError:
+        return "?"
+
+
 def run(args):
     cfg = config.load()
     pid = args.pid or (_pid_of(args.name) if args.name else None)
@@ -21,10 +32,19 @@ def run(args):
     ping = args.ping or cfg.get("ping", 200)
     keymap = {"cut": keys.keycode(args.key or cfg.get("key", "f8")),
               "lag": keys.keycode(args.ping_key or cfg.get("ping_key", "f9"))}
-    state = {"cut": False, "lag": False, "dropped": 0, "log": [], "prompt": "",
-             "scope": f"pid {pid}" if pid else "global", "direction": args.direction, "ping": ping}
+    state = {"cut": False, "lag": False, "dropped": 0, "log": [], "prompt": "", "picker": None,
+             "scope": "", "direction": args.direction or cfg.get("direction", "both"),
+             "direction_label": "", "ping": ping}
     beeper = beep.Beeper(enabled=not args.no_beep)
     hk = keys.Hotkeys()
+
+    def describe(name=None):
+        state["scope"] = f"{name or pid_name(pid)} (pid {pid})" if pid else "global (whole machine)"
+        state["direction_label"] = DIRECTIONS[state["direction"]]
+
+    def save():
+        config.save({"key": keys.keyname(keymap["cut"]), "ping_key": keys.keyname(keymap["lag"]),
+                     "ping": ping, "direction": state["direction"]})
 
     def say(msg):
         state["log"].append(msg)
@@ -35,8 +55,8 @@ def run(args):
         state["cut"] = not state["cut"]
         if state["cut"]:
             state["dropped"] = 0
-            firewall.enable(args.direction, cgroup=bool(pid))
-            say(f"[CUT ] {args.direction} {state['scope']}")
+            firewall.enable(state['direction'], cgroup=bool(pid))
+            say(f"[CUT ] {DIRECTIONS[state['direction']]} - {state['scope']}")
         else:
             state["dropped"] = firewall.dropped()
             firewall.disable()
@@ -50,6 +70,32 @@ def run(args):
         beeper.play("lag", state["lag"])
 
     actions = {"cut": toggle_cut, "lag": toggle_lag}
+
+    def cycle_direction():
+        order = list(DIRECTIONS)
+        state["direction"] = order[(order.index(state["direction"]) + 1) % len(order)]
+        describe()
+        if state["cut"]:
+            firewall.enable(state["direction"], cgroup=bool(pid))
+        save()
+        say(f"[DIR ] {DIRECTIONS[state['direction']]}")
+
+    def open_picker():
+        items = [(None, "Global - whole machine")]
+        items += [(p, f"{n} (pid {p}) - {c} socket{'s' * (c > 1)}") for p, n, c in info.processes()]
+        state["picker"] = {"items": items, "i": 0}
+
+    def set_scope(new_pid):
+        nonlocal pid
+        firewall.disable()
+        firewall.detach()
+        pid = new_pid
+        if pid:
+            firewall.attach(pid)
+        describe()
+        if state["cut"]:
+            firewall.enable(state["direction"], cgroup=bool(pid))
+        say(f"[SCOPE] {state['scope']}")
 
     def bind(action, code):
         hk.actions = {c: f for c, f in hk.actions.items() if f is not actions[action]}
@@ -69,8 +115,7 @@ def run(args):
                 say(f"{keys.keyname(code)} is already the {other.upper()} key; try another")
             else:
                 bind(action, code)
-                config.save({"key": keys.keyname(keymap["cut"]), "ping_key": keys.keyname(keymap["lag"]),
-                             "ping": ping})
+                save()
                 say(f"{action.upper()} key is now {keys.keyname(code)}")
         hk.capture = got
 
@@ -78,9 +123,10 @@ def run(args):
         bind(action, code)
 
     def hints():
-        return (f"[{keys.keyname(keymap['cut'])}] cut  [{keys.keyname(keymap['lag'])}] lag   "
-                "window: c l = toggle, 1 2 = change key, q = quit")
+        return (f"hotkeys: [{keys.keyname(keymap['cut'])}] cut   [{keys.keyname(keymap['lag'])}] lag\n"
+                "window:  c cut   l lag   d direction   p process   1 2 change key   q quit")
 
+    describe()
     firewall.disable()
     if pid:
         firewall.attach(pid)
@@ -92,8 +138,11 @@ def run(args):
             import curses
             from . import ui
             window_keys = {ord("c"): toggle_cut, ord("l"): toggle_lag,
+                           ord("d"): cycle_direction, ord("p"): open_picker,
                            ord("1"): lambda: rebind("cut"), ord("2"): lambda: rebind("lag")}
-            curses.wrapper(lambda scr: hk.listen(tick=ui.make_tick(scr, state, window_keys, hints)))
+            os.environ.setdefault("ESCDELAY", "25")
+            curses.wrapper(lambda scr: hk.listen(
+                tick=ui.make_tick(scr, state, window_keys, hints, set_scope)))
     except KeyboardInterrupt:
         pass
     finally:
@@ -119,7 +168,8 @@ def main():
         argv.insert(0, "run")
     r = sub.add_parser("run", help="start the hotkey listener (needs root)")
     r.add_argument("-k", "--key", help="cut-off key (default f8, or last saved)")
-    r.add_argument("-d", "--direction", choices=["in", "out", "both"], default="both")
+    r.add_argument("-d", "--direction", choices=["in", "out", "both"],
+                   help="what to cut: out=sending, in=receiving (default both, or last saved)")
     g = r.add_mutually_exclusive_group()
     g.add_argument("-p", "--pid", type=int, help="only cut this process")
     g.add_argument("-n", "--name", help="only cut the oldest process with this exact name")

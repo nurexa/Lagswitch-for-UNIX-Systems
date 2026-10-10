@@ -22,12 +22,20 @@ sudo lagswitch
 
 That's it: a live panel opens, **F8** cuts/restores the connection, **F9** toggles +200ms latency.
 
-**Change a key from the panel:** press `1` (cut) or `2` (latency), then press the key you want on
-your keyboard. It is detected automatically, checked for conflicts, and remembered next time
-(`~/.config/lagswitch.json`). `Esc` cancels. `c` / `l` toggle from the window, `q` quits.
+**In the panel**
+
+| Key | Does |
+|---|---|
+| `p` | **Process picker**: lists programs with open sockets, pick one with Up/Down + Enter (or "Global"). Cut-off then only affects that process; switching works live, even while cut. |
+| `d` | **Direction**: cycles *sending + receiving* → *sending only* → *receiving only*. Applies instantly. |
+| `1` / `2` | Change the cut / latency key: press it, then press the new key on your keyboard. Conflicts are rejected, `Esc` cancels. |
+| `c` / `l` | Toggle cut / latency from the window |
+| `q` | Quit (cleans up everything) |
+
+Keys and direction are remembered next time (`~/.config/lagswitch.json`).
 
 ```sh
-sudo lagswitch -n firefox -d out    # only that process (by name), outgoing only
+sudo lagswitch -n firefox -d out    # skip the picker: that process, sending only
 sudo lagswitch -p 1234              # only that PID
 sudo lagswitch --ping 300           # +300ms instead of +200ms
 sudo lagswitch --plain --no-beep    # log lines only, no sounds
@@ -41,7 +49,7 @@ Ctrl-C / `q` stops it and removes every rule, qdisc and cgroup it created.
 |---|---|
 | `-k, --key` | cut-off key: `f1`-`f12`, `a`-`z`, `0`-`9`, `space`, `pause`, `scrolllock`, … or a raw evdev code (default `f8`, or last saved) |
 | `--ping-key`, `--ping` | latency key (default `f9`) and milliseconds (default 200) |
-| `-d, --direction` | `in`, `out`, `both` (default) |
+| `-d, --direction` | `out` = cut sending, `in` = cut receiving, `both` (default, or last saved) |
 | `-p / -n` | restrict to a PID / exact process name |
 | `--plain` | no status panel, just log lines |
 | `--no-beep` | disable sounds |
