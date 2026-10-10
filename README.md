@@ -22,6 +22,8 @@ sudo lagswitch run -k f9 -d out             # F9, outgoing only
 sudo lagswitch run -n firefox               # only that process (by name)
 sudo lagswitch run -p 1234 -k scrolllock    # only that PID
 sudo lagswitch run --ping-key f10 --ping 300   # F10 toggles +300ms latency
+sudo lagswitch run --ui --ping-key f10      # live status panel (c / l / q also work in the window)
+sudo lagswitch run --no-beep                # silence the on/off sounds
 sudo lagswitch info [-p PID]                # diagnostics
 sudo lagswitch reset                        # clean up after a crash
 ```
@@ -34,6 +36,19 @@ Ctrl-C stops it and removes every rule, qdisc and cgroup it created.
 | `-d, --direction` | `in`, `out`, `both` (default) |
 | `-p / -n` | restrict to a PID / exact process name |
 | `--ping-key`, `--ping` | latency hotkey and milliseconds (default 200) |
+| `--ui` | terminal status panel: connection state, scope, latency, dropped packets, event log |
+| `--no-beep` | disable sounds |
+
+## Sounds
+
+Every toggle plays a tone so you can tell the state without looking:
+
+| | ON | OFF |
+|---|---|---|
+| Cut-off | one high beep | one low beep |
+| Latency | two high beeps | two low beeps |
+
+Played as your own user via `pw-play` / `paplay` / `aplay`; falls back to the terminal bell.
 
 ## `info`
 
@@ -49,6 +64,8 @@ lagswitch/
   keys.py       global hotkeys via /dev/input (X11 and Wayland)
   firewall.py   nftables table (priority -300) + per-process cgroup
   netem.py      tc netem latency
+  beep.py       on/off tones
+  ui.py         curses status panel
   info.py       diagnostics
 ```
 

@@ -33,13 +33,14 @@ def _keyboards():
                 yield f"/dev/input/{ev}"
 
 
-def listen(binds):
-    """Block forever; call binds[code]() on each press of a bound key."""
+def listen(binds, tick=None, interval=0.2):
+    """Block forever; call binds[code]() on each press of a bound key.
+    If given, tick() runs every `interval` seconds (and after each event)."""
     files = [open(p, "rb", buffering=0) for p in _keyboards()]
     if not files:
         raise RuntimeError("no keyboard found in /dev/input (are you root?)")
     while True:
-        ready, _, _ = select.select(files, [], [])
+        ready, _, _ = select.select(files, [], [], interval if tick else None)
         for f in ready:
             data = os.read(f.fileno(), EVENT.size)
             if len(data) < EVENT.size:
@@ -47,3 +48,5 @@ def listen(binds):
             _, _, etype, code, value = EVENT.unpack(data)
             if etype == EV_KEY and value == PRESS and code in binds:
                 binds[code]()
+        if tick:
+            tick()

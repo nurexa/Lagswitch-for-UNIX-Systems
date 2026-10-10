@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 
-from . import firewall, info, keys, netem
+from . import beep, firewall, info, keys, netem
 
 
 def _pid_of(name):
@@ -17,36 +17,58 @@ def _pid_of(name):
 def run(args):
     pid = args.pid or (_pid_of(args.name) if args.name else None)
     iface = netem.default_iface()
-    state = {"cut": False, "lag": False}
+    state = {"cut": False, "lag": False, "dropped": 0, "log": []}
+    beeper = beep.Beeper(enabled=not args.no_beep)
+    scope = f"pid {pid}" if pid else "global"
+
+    def say(msg):
+        state["log"].append(msg)
+        if not args.ui:
+            print(msg)
 
     def toggle_cut():
         state["cut"] = not state["cut"]
         if state["cut"]:
+            state["dropped"] = 0
             firewall.enable(args.direction, cgroup=bool(pid))
-            print(f"[CUT ] {args.direction} {'pid ' + str(pid) if pid else 'global'}")
+            say(f"[CUT ] {args.direction} {scope}")
         else:
-            n = firewall.dropped()
+            state["dropped"] = firewall.dropped()
             firewall.disable()
-            print(f"[LIVE] connection restored ({n} packets dropped)")
+            say(f"[LIVE] connection restored ({state['dropped']} packets dropped)")
+        beeper.play("cut", state["cut"])
 
     def toggle_lag():
         state["lag"] = not state["lag"]
         (netem.enable(iface, args.ping) if state["lag"] else netem.disable(iface))
-        print(f"[LAG ] +{args.ping}ms on {iface}" if state["lag"] else "[LAG ] off")
+        say(f"[LAG ] +{args.ping}ms on {iface}" if state["lag"] else "[LAG ] off")
+        beeper.play("lag", state["lag"])
 
+    toggles = {"cut": toggle_cut}
     binds = {keys.keycode(args.key): toggle_cut}
+    hints = f"[{args.key}] cut"
     if args.ping_key:
+        toggles["lag"] = toggle_lag
         binds[keys.keycode(args.ping_key)] = toggle_lag
+        hints += f"   [{args.ping_key}] lag"
+    hints += "   (window: c / l)   [q] quit"
 
     firewall.disable()
     if pid:
         firewall.attach(pid)
-    print(f"ready: {args.key} = cut{f', {args.ping_key} = +{args.ping}ms' if args.ping_key else ''}. Ctrl-C to quit.")
     try:
-        keys.listen(binds)
+        if args.ui:
+            import curses
+            from . import ui
+            curses.wrapper(lambda scr: keys.listen(
+                binds, tick=ui.make_tick(scr, state, toggles, scope, args.direction, args.ping, hints)))
+        else:
+            print(f"ready: {hints}. Ctrl-C to quit.")
+            keys.listen(binds)
     except KeyboardInterrupt:
         pass
     finally:
+        beeper.close()
         reset()
 
 
@@ -70,6 +92,8 @@ def main():
     g.add_argument("-n", "--name", help="only cut the oldest process with this exact name")
     r.add_argument("--ping-key", help="key that toggles added latency (off if unset)")
     r.add_argument("--ping", type=int, default=200, metavar="MS", help="added latency (default 200)")
+    r.add_argument("--ui", action="store_true", help="show a live status panel in the terminal")
+    r.add_argument("--no-beep", action="store_true", help="disable on/off sounds")
     r.set_defaults(fn=run)
     i = sub.add_parser("info", help="show network diagnostics")
     i.add_argument("-p", "--pid", type=int, help="filter sockets to this pid")
